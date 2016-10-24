@@ -1695,7 +1695,7 @@ def gradient(f, *varargs, **kwargs):
         return outvals
 
 
-def diff(a, n=1, axis=-1):
+def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
     """
     Calculate the n-th discrete difference along given axis.
 
@@ -1711,12 +1711,17 @@ def diff(a, n=1, axis=-1):
         The number of times values are differenced.
     axis : int, optional
         The axis along which the difference is taken, default is the last axis.
+    to_begin : 1d array_like
+        Values to insert along axis before the differenced results
+    to_end : 1d array_like
+        Values to insert along axis after the differenced results
 
     Returns
     -------
     diff : ndarray
         The n-th differences. The shape of the output is the same as `a`
-        except along `axis` where the dimension is smaller by `n`.
+        except along `axis` where the dimension is smaller by `n`, and possibly 
+        increased by len(to_begin) + len(to_end)
 
     See Also
     --------
@@ -1736,6 +1741,9 @@ def diff(a, n=1, axis=-1):
            [5, 1, 2]])
     >>> np.diff(x, axis=0)
     array([[-1,  2,  0, -2]])
+    >>> np.diff(x, to_begin=[0, 0], to_end=9)
+    array([[0, 0, 2, 3, 4, 9],
+           [0, 0, 5, 1, 2, 9]])
 
     """
     if n == 0:
@@ -1752,9 +1760,58 @@ def diff(a, n=1, axis=-1):
     slice1 = tuple(slice1)
     slice2 = tuple(slice2)
     if n > 1:
-        return diff(a[slice1]-a[slice2], n-1, axis=axis)
-    else:
+        return diff(a[slice1]-a[slice2], n-1, axis=axis, 
+            to_begin=to_begin, to_end=to_end)
+
+    # if nothing to add to either side, fast track the result
+    elif to_begin == None and to_end == None:
         return a[slice1]-a[slice2]
+
+    else:
+        # compute the length of the diff'd portion
+        # force length to be non negative
+        l_diff = a.shape[axis] - 1
+        if l_diff < 0:
+            l_diff = 0
+
+        # make to_end a 1D array
+        if to_end is None:
+            to_end = np.array([])
+        else:
+            to_end = np.atleast_1d(to_end)
+            if len(to_end.shape) > 1:
+                raise ValueError("to_end must be 1D array like")
+
+        # make to_begin a 1D array
+        if to_begin is None:
+            to_begin = np.array([])
+        else:
+            to_begin = np.atleast_1d(to_begin)
+            if len(to_begin.shape) > 1:
+                raise ValueError("to_begin must be 1D array like")
+
+        # initialize the output array with correct shape
+        shape = list(a.shape)
+        shape[axis] = len(to_begin) + len(to_end) + l_diff
+        result = np.empty(tuple(shape), dtype=a.dtype)
+
+        # copy values to end
+        if len(to_end) > 0:
+            end_slice = [slice(None)]*nd
+            end_slice[axis] = slice(len(to_begin) + l_diff, None)
+            result[end_slice] = to_end
+
+        # copy values to begin
+        if len(to_begin) > 0:
+            begin_slice = [slice(None)]*nd
+            begin_slice[axis] = slice(None, len(to_begin))
+            result[begin_slice] = to_begin
+
+        # perform the diff in place
+        diff_slice = [slice(None)]*nd
+        diff_slice[axis] = slice(len(to_begin), len(to_begin) + l_diff)
+        np.subtract(a[slice1], a[slice2], result[diff_slice])
+        return result
 
 
 def interp(x, xp, fp, left=None, right=None, period=None):

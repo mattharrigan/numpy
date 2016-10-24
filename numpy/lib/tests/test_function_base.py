@@ -642,6 +642,47 @@ class TestDiff(TestCase):
         assert_array_equal(diff(x, axis=0), out3)
         assert_array_equal(diff(x, n=2, axis=0), out4)
 
+    def test_begin_end_1d(self):
+        x = [1, 3]
+        assert_array_equal(diff(x, to_begin=-2), [-2, 2])
+        assert_array_equal(diff(x, to_begin=[]), [2])
+        assert_array_equal(diff(x, to_begin=[-2, 4]), [-2, 4, 2])
+
+        assert_array_equal(diff(x, to_end=-3), [2, -3])
+        assert_array_equal(diff(x, to_end=[]), [2])
+        assert_array_equal(diff(x, to_end=[-3, 7]), [2, -3, 7])
+
+        assert_array_equal(diff(x, to_begin=-2, to_end=-3), [-2, 2, -3])
+        assert_array_equal(diff(x, to_begin=[], to_end=[]), [2])
+        assert_array_equal(diff(x, to_begin=[-2, 4], to_end=[-3, 7]), [-2, 4, 2, -3, 7])
+
+    def test_begin_end_nd(self):
+        x = rand(3, 4, 5)
+        out1 = x[:, :, 1:] - x[:, :, :-1]
+        out2 = out1[:, :, 1:] - out1[:, :, :-1]
+        out3 = x[1:, :, :] - x[:-1, :, :]
+        out4 = out3[1:, :, :] - out3[:-1, :, :]
+
+        expected = np.concatenate((np.tile([1], (3, 4, 1)), out1), 2)
+        assert_array_equal(diff(x, to_begin=1), expected)
+        expected = np.concatenate((out1, np.tile([1], (3, 4, 1))), 2)
+        assert_array_equal(diff(x, to_end=1), expected)
+        expected = np.concatenate((np.tile([1], (3, 4, 1)), out1, np.tile([1], (3, 4, 1))), 2)
+        assert_array_equal(diff(x, to_end=1, to_begin=1), expected)
+
+        expected = np.concatenate((np.tile([1], (3, 4, 1)), out2), 2)
+        assert_array_equal(diff(x, n=2), out2)
+
+        expected = np.concatenate((np.tile([1], (1, 4, 5)), out3), 0)
+        assert_array_equal(diff(x, axis=0, to_begin=1), expected)
+        expected = np.concatenate((out3, np.tile([1], (1, 4, 5))), 0)
+        assert_array_equal(diff(x, axis=0, to_end=1), expected)
+        expected = np.concatenate((np.tile([1], (1, 4, 5)), out3, np.tile([1], (1, 4, 5))), 0)
+        assert_array_equal(diff(x, axis=0, to_end=1, to_begin=1), expected)
+
+        expected = np.concatenate((np.tile([1], (1, 4, 5)), out4), 0)
+        assert_array_equal(diff(x, n=2, axis=0, to_begin=1), expected)
+
 
 class TestDelete(TestCase):
 
