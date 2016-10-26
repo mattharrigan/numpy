@@ -1764,7 +1764,7 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
             to_begin=to_begin, to_end=to_end)
 
     # if nothing to add to either side, fast track the result
-    elif to_begin == None and to_end == None:
+    elif to_begin is None and to_end is None:
         return a[slice1]-a[slice2]
 
     else:
@@ -1776,40 +1776,46 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
 
         # make to_end a 1D array
         if to_end is None:
-            to_end = np.array([])
+            l_end = 0
         else:
             to_end = np.atleast_1d(to_end)
-            if len(to_end.shape) > 1:
-                raise ValueError("to_end must be 1D array like")
+            if to_end.ndim == 1:
+                l_end = len(to_end)
+            else:
+                to_end = np.array(to_end, ndmin=nd)
+                l_end = to_end.shape[axis]
 
         # make to_begin a 1D array
         if to_begin is None:
-            to_begin = np.array([])
+            l_begin = 0
         else:
             to_begin = np.atleast_1d(to_begin)
-            if len(to_begin.shape) > 1:
-                raise ValueError("to_begin must be 1D array like")
+            if to_begin.ndim == 1:
+                l_begin = len(to_begin)
+            else:
+                to_begin = np.array(to_begin, ndmin=nd)
+                l_begin = to_begin.shape[axis]
 
         # initialize the output array with correct shape
         shape = list(a.shape)
-        shape[axis] = len(to_begin) + len(to_end) + l_diff
+        shape[axis] = l_begin + l_end + l_diff
         result = np.empty(tuple(shape), dtype=a.dtype)
 
         # copy values to end
-        if len(to_end) > 0:
-            end_slice = [slice(None)]*nd
-            end_slice[axis] = slice(len(to_begin) + l_diff, None)
+        if l_end > 0:
+            end_slice = [slice(None)] * nd
+            end_slice[axis] = slice(l_begin + l_diff, None)
             result[end_slice] = to_end
 
         # copy values to begin
-        if len(to_begin) > 0:
-            begin_slice = [slice(None)]*nd
-            begin_slice[axis] = slice(None, len(to_begin))
+        if l_begin > 0:
+            begin_slice = [slice(None)] * nd
+            begin_slice[axis] = slice(None, l_begin)
             result[begin_slice] = to_begin
 
         # perform the diff in place
-        diff_slice = [slice(None)]*nd
-        diff_slice[axis] = slice(len(to_begin), len(to_begin) + l_diff)
+        diff_slice = [slice(None)] * nd
+        diff_slice[axis] = slice(l_begin, l_begin + l_diff)
         np.subtract(a[slice1], a[slice2], result[diff_slice])
         return result
 

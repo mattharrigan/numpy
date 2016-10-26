@@ -657,31 +657,71 @@ class TestDiff(TestCase):
         assert_array_equal(diff(x, to_begin=[-2, 4], to_end=[-3, 7]), [-2, 4, 2, -3, 7])
 
     def test_begin_end_nd(self):
-        x = rand(3, 4, 5)
+        x = rand(4, 5, 6)
         out1 = x[:, :, 1:] - x[:, :, :-1]
         out2 = out1[:, :, 1:] - out1[:, :, :-1]
         out3 = x[1:, :, :] - x[:-1, :, :]
         out4 = out3[1:, :, :] - out3[:-1, :, :]
 
-        expected = np.concatenate((np.tile([1], (3, 4, 1)), out1), 2)
+        expected = np.concatenate((np.tile([1], (4, 5, 1)), out1), 2)
         assert_array_equal(diff(x, to_begin=1), expected)
-        expected = np.concatenate((out1, np.tile([1], (3, 4, 1))), 2)
+        expected = np.concatenate((out1, np.tile([1], (4, 5, 1))), 2)
         assert_array_equal(diff(x, to_end=1), expected)
-        expected = np.concatenate((np.tile([1], (3, 4, 1)), out1, np.tile([1], (3, 4, 1))), 2)
+        expected = np.concatenate((np.tile([1], (4, 5, 1)), out1, np.tile([1], (4, 5, 1))), 2)
         assert_array_equal(diff(x, to_end=1, to_begin=1), expected)
 
-        expected = np.concatenate((np.tile([1], (3, 4, 1)), out2), 2)
+        expected = np.concatenate((np.tile([1], (4, 5, 1)), out2), 2)
         assert_array_equal(diff(x, n=2), out2)
 
-        expected = np.concatenate((np.tile([1], (1, 4, 5)), out3), 0)
+        expected = np.concatenate((np.tile([1], (1, 5, 6)), out3), 0)
         assert_array_equal(diff(x, axis=0, to_begin=1), expected)
-        expected = np.concatenate((out3, np.tile([1], (1, 4, 5))), 0)
+        expected = np.concatenate((out3, np.tile([1], (1, 5, 6))), 0)
         assert_array_equal(diff(x, axis=0, to_end=1), expected)
-        expected = np.concatenate((np.tile([1], (1, 4, 5)), out3, np.tile([1], (1, 4, 5))), 0)
+        expected = np.concatenate((np.tile([1], (1, 5, 6)), out3, np.tile([1], (1, 5, 6))), 0)
         assert_array_equal(diff(x, axis=0, to_end=1, to_begin=1), expected)
 
-        expected = np.concatenate((np.tile([1], (1, 4, 5)), out4), 0)
+        expected = np.concatenate((np.tile([1], (1, 5, 6)), out4), 0)
         assert_array_equal(diff(x, n=2, axis=0, to_begin=1), expected)
+
+        for axis in range(3):
+            # check inverse of cumsum, inserts a single value
+            result = np.cumsum(np.diff(x, to_begin=x.take([0], axis=axis), axis=axis), axis=axis)
+            assert_array_almost_equal(x, result)
+
+            # insert two values to begin
+            result = np.diff(x, to_begin=x.take([0, 1], axis=axis), axis=axis)
+            assert_equal(x.shape[axis] + 1, result.shape[axis])
+            assert_array_equal(x.take([0, 1], axis=axis), result.take([0, 1], axis=axis))
+
+            # insert two values to end
+            result = np.diff(x, to_end=x.take([0, 1], axis=axis), axis=axis)
+            assert_equal(x.shape[axis] + 1, result.shape[axis])
+            assert_array_equal(x.take([0, 1], axis=axis), result.take([-2, -1], axis=axis))
+
+            # higher difference with padding on both sides
+            result = np.diff(x, n=2, to_begin=x.take([0, 1], axis=axis), 
+                             to_end=x.take([-1], axis=axis), axis=axis)
+            assert_equal(x.shape[axis] + 1, result.shape[axis])
+            assert_array_equal(x.take([0, 1], axis=axis), result.take([0, 1], axis=axis))
+            assert_array_equal(x.take([-1], axis=axis), result.take([-1], axis=axis))
+            assert_array_equal(np.diff(x, n=2, axis=axis), result.take(np.arange(2, x.shape[axis]), axis=axis))
+
+    def test_degenerate_size(self):
+        assert_array_equal(np.array([]), diff([]))
+        assert_array_equal(np.array([]), diff([1]))
+        assert_array_equal(np.array([]), diff([1, 2], n=2))
+        assert_array_equal(np.array([]), diff([], n=7))
+
+        x = [[[[1]]]]
+        for axis in range(4):
+            result = diff(x, axis=axis)
+            assert_equal(0, result.shape[axis])
+            assert_equal(3, sum(result.shape))
+
+    def test_subclasses(self):
+        x = np.matrix(np.eye(3))
+        assert(isinstance(np.diff(x), np.matrix))
+        assert(isinstance(np.diff(x, to_begin=0), np.matrix))
 
 
 class TestDelete(TestCase):
