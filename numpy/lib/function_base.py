@@ -1744,7 +1744,9 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
     >>> np.diff(x, to_begin=[0, 0], to_end=9)
     array([[0, 0, 2, 3, 4, 9],
            [0, 0, 5, 1, 2, 9]])
-
+    >>> np.cumsum(np.diff(x, to_begin='first', axis=1), axis=1)
+    array([[1, 3, 6, 10],
+           [0, 5, 6, 8]])
     """
     if n == 0:
         return a
@@ -1788,6 +1790,9 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
         # make to_begin a 1D array
         if to_begin is None:
             l_begin = 0
+        elif isinstance(to_begin, str) and to_begin == 'first':
+            to_begin = a.take([0], axis)
+            l_begin = 1
         else:
             to_begin = np.atleast_1d(to_begin)
             if to_begin.ndim == 1:
@@ -1817,6 +1822,7 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
         diff_slice = [slice(None)] * nd
         diff_slice[axis] = slice(l_begin, l_begin + l_diff)
         np.subtract(a[slice1], a[slice2], result[diff_slice])
+
         return result
 
 

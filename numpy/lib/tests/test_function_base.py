@@ -656,6 +656,10 @@ class TestDiff(TestCase):
         assert_array_equal(diff(x, to_begin=[], to_end=[]), [2])
         assert_array_equal(diff(x, to_begin=[-2, 4], to_end=[-3, 7]), [-2, 4, 2, -3, 7])
 
+        # inverse of cumsum
+        assert_array_equal(x, np.cumsum(np.diff(x, to_begin=x[0])))
+        assert_array_equal(x, np.cumsum(np.diff(x, to_begin='first')))
+
     def test_begin_end_nd(self):
         x = rand(4, 5, 6)
         out1 = x[:, :, 1:] - x[:, :, :-1]
@@ -686,6 +690,8 @@ class TestDiff(TestCase):
         for axis in range(3):
             # check inverse of cumsum, inserts a single value
             result = np.cumsum(np.diff(x, to_begin=x.take([0], axis=axis), axis=axis), axis=axis)
+            assert_array_almost_equal(x, result)
+            result = np.cumsum(np.diff(x, to_begin='first', axis=axis), axis=axis)
             assert_array_almost_equal(x, result)
 
             # insert two values to begin
