@@ -1770,20 +1770,18 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
         return a[slice1]-a[slice2]
 
     else:
-        # compute the length of the diff'd portion
-        # force length to be non negative
-        l_diff = a.shape[axis] - 1
-        if l_diff < 0:
-            l_diff = 0
-
         # make to_end a 1D array
         if to_end is None:
             l_end = 0
         else:
-            to_end = np.atleast_1d(to_end)
-            if to_end.ndim == 1:
-                l_end = len(to_end)
+            to_end = np.asanyarray(to_end)
+            if to_end.ndim < 2:
+                l_end = to_end.size
+                shape = [1] * a.ndim
+                shape[axis] = -1
+                to_end = to_end.reshape(tuple(shape))
             else:
+                # consider using atleast_nd
                 to_end = np.array(to_end, ndmin=nd)
                 l_end = to_end.shape[axis]
 
@@ -1794,12 +1792,20 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
             to_begin = a.take([0], axis)
             l_begin = 1
         else:
-            to_begin = np.atleast_1d(to_begin)
-            if to_begin.ndim == 1:
-                l_begin = len(to_begin)
+            to_begin = np.asanyarray(to_begin)
+            if to_begin.ndim < 2:
+                l_begin = to_begin.size
+                shape = [1] * a.ndim
+                shape[axis] = -1
+                to_begin = to_begin.reshape(tuple(shape))
             else:
+                # consider using atleast_nd
                 to_begin = np.array(to_begin, ndmin=nd)
                 l_begin = to_begin.shape[axis]
+
+        # compute the length of the diff'd portion
+        # force length to be non negative
+        l_diff = max(a.shape[axis] - 1, 0)
 
         # initialize the output array with correct shape
         shape = list(a.shape)
@@ -1807,8 +1813,7 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
         result = np.empty(tuple(shape), dtype=a.dtype)
 
         # wrap ndarray subclasses
-        wrap = getattr(a, "__array_prepare__", a.__array_wrap__)
-        result = wrap(result)
+        result = a.__array_wrap__(result)
         
         # copy values to end
         if l_end > 0:
