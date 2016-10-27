@@ -1806,6 +1806,10 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
         shape[axis] = l_begin + l_end + l_diff
         result = np.empty(tuple(shape), dtype=a.dtype)
 
+        # wrap ndarray subclasses
+        wrap = getattr(a, "__array_prepare__", a.__array_wrap__)
+        result = wrap(result)
+        
         # copy values to end
         if l_end > 0:
             end_slice = [slice(None)] * nd
