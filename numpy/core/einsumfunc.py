@@ -6,6 +6,8 @@ from __future__ import division, absolute_import, print_function
 
 from numpy.core.multiarray import c_einsum
 from numpy.core.numeric import asarray, asanyarray, result_type
+from numpy.core import add, subtract
+import re
 
 __all__ = ['einsum', 'einsum_path']
 
@@ -699,6 +701,143 @@ def einsum_path(*operands, **kwargs):
     return (path, path_print)
 
 
+def _split_einsum(*operands):
+    """
+    Split the operands given to einsum into individual segements which are then combined with elementwise addition or
+    subtraction.
+    
+    :param operands:
+    :return: list of individual einsum segments
+    """
+
+    # initialize output list
+    segments = []
+
+    # TODO, should not have to check this repeatedly
+    if len(operands) == 0:
+        raise ValueError("No input operands")
+
+    if isinstance(operands[0], str):
+        # its the string API
+
+        # the operands for each segment are operands[start:stop].  stop 
+        # represents where the last segment stopped and where the next  segment 
+        # starts. initialize stop to 1 since zeroth operand is the subscript string
+        stop = 1
+
+        # split on + and - but not on ->
+        for s in re.split(r'([+-](?!>))', operands[0]):
+            if s == '' and (len(segments) % 2) == 1:
+                # repeated + or - get separated by an empty string by re.split
+                # empty strings are allowed for scalar operands
+                raise ValueError('subscripts cannot have repeated + or -')
+
+            elif s == '+' or s == '-':
+                if len(segments) == 0:
+                    raise ValueError('subscripts cannot start with a + or -')
+                segments.append(s)
+
+            else:
+                # update start for this iteration
+                # there is always one more operand than "," in each segment
+                start = stop
+                stop += s.count(',') + 1
+                if len(operands) < stop:
+                    raise ValueError('fewer operands provided to einsum function'
+                                     'than specified in the subscripts string')
+                segments.append((s, ) + operands[start:stop])
+
+        if (len(segments) % 2) == 0:
+            raise ValueError('subscripts cannot end with a + or -')
+        if len(operands) > stop:
+            raise ValueError('more operands provided to einsum function than specified in the subscripts string')
+
+    else:
+        # its not the string API
+
+        # initialize a tuple to hold the arguments for the first einsum call
+        segment = ()
+
+        for operand in operands:
+            if isinstance(operand, str) and (operand == '+' or operand == '-'):
+
+                if segment == ():
+                    if len(segments) == 0:
+                        raise ValueError('operands cannot start with a + or -')
+                    else:
+                        raise ValueError('operands cannot have repeated + or -')
+
+                # append the tuple of arguments for the previous call, the + or -,
+                # and reinitialize the tuple of arguments for the next einsum call
+                segments.append(segment)
+                segments.append(operand)
+                segment = ()                 
+
+            else:
+                segment += (operand, )
+            
+        if segment == ():
+            raise ValueError('operands cannot end with a + or -')
+
+        # append the last one
+        segments.append(segment)
+            
+
+    return segments
+
+
+def optimize_einsum(*operands, **kwargs):
+    # Grab non-einsum kwargs
+    optimize_arg = kwargs.pop('optimize', False)
+    if not optimize_arg:
+        return c_einsum(*operands, **kwargs)
+
+    valid_einsum_kwargs = ['out', 'dtype', 'order', 'casting']
+    einsum_kwargs = {k: v for (k, v) in kwargs.items() if
+                     k in valid_einsum_kwargs}
+
+    # Make sure all keywords are valid
+    valid_contract_kwargs = ['optimize'] + valid_einsum_kwargs
+    unknown_kwargs = [k for (k, v) in kwargs.items() if
+                      k not in valid_contract_kwargs]
+
+    if len(unknown_kwargs):
+        raise TypeError("Did not understand the following kwargs: %s"
+                        % unknown_kwargs)
+
+    # Special handeling if out is specified
+    specified_out = False
+    out_array = einsum_kwargs.pop('out', None)
+    if out_array is not None:
+        specified_out = True
+
+    # Build the contraction list and operand
+    operands, contraction_list = einsum_path(*operands, optimize=optimize_arg,
+                                             einsum_call=True)
+    # Start contraction loop
+    for num, contraction in enumerate(contraction_list):
+        inds, idx_rm, einsum_str, remaining = contraction
+        tmp_operands = []
+        for x in inds:
+            tmp_operands.append(operands.pop(x))
+
+        # If out was specified
+        if specified_out and ((num + 1) == len(contraction_list)):
+            einsum_kwargs["out"] = out_array
+
+        # Do the contraction
+        new_view = c_einsum(einsum_str, *tmp_operands, **einsum_kwargs)
+
+        # Append new items and derefernce what we can
+        operands.append(new_view)
+        del tmp_operands, new_view
+
+    if specified_out:
+        return out_array
+    else:
+        return operands[0]
+
+
 # Rewrite einsum to handle different cases
 def einsum(*operands, **kwargs):
     """
@@ -937,54 +1076,29 @@ def einsum(*operands, **kwargs):
 
     """
 
-    # Grab non-einsum kwargs
-    optimize_arg = kwargs.pop('optimize', False)
+    segments = _split_einsum(*operands)
 
-    # If no optimization, run pure einsum
-    if optimize_arg is False:
-        return c_einsum(*operands, **kwargs)
+    result = optimize_einsum(*segments[0], **kwargs)
 
-    valid_einsum_kwargs = ['out', 'dtype', 'order', 'casting']
-    einsum_kwargs = {k: v for (k, v) in kwargs.items() if
-                     k in valid_einsum_kwargs}
+    # pop output array so subsequent calls dont overwrite it
+    kwargs.pop('out', False)
 
-    # Make sure all keywords are valid
-    valid_contract_kwargs = ['optimize'] + valid_einsum_kwargs
-    unknown_kwargs = [k for (k, v) in kwargs.items() if
-                      k not in valid_contract_kwargs]
+    for i in range(1, len(segments), 2):
+        curr_segment = optimize_einsum(*segments[i+1], **kwargs)
 
-    if len(unknown_kwargs):
-        raise TypeError("Did not understand the following kwargs: %s"
-                        % unknown_kwargs)
+        if segments[i] == '+':
+            if result.ndim == 0:
+                result = add(result, curr_segment)
+            elif result.shape == curr_segment.shape:
+                add(result, curr_segment, out=result)
+            else:
+                result = add(result, curr_segment)
+        else:
+            if result.ndim == 0:
+                result = subtract(result, curr_segment)
+            elif result.shape == curr_segment.shape:
+                subtract(result, curr_segment, out=result)
+            else:
+                result = subtract(result, curr_segment)
 
-    # Special handeling if out is specified
-    specified_out = False
-    out_array = einsum_kwargs.pop('out', None)
-    if out_array is not None:
-        specified_out = True
-
-    # Build the contraction list and operand
-    operands, contraction_list = einsum_path(*operands, optimize=optimize_arg,
-                                             einsum_call=True)
-    # Start contraction loop
-    for num, contraction in enumerate(contraction_list):
-        inds, idx_rm, einsum_str, remaining = contraction
-        tmp_operands = []
-        for x in inds:
-            tmp_operands.append(operands.pop(x))
-
-        # If out was specified
-        if specified_out and ((num + 1) == len(contraction_list)):
-            einsum_kwargs["out"] = out_array
-
-        # Do the contraction
-        new_view = c_einsum(einsum_str, *tmp_operands, **einsum_kwargs)
-
-        # Append new items and derefernce what we can
-        operands.append(new_view)
-        del tmp_operands, new_view
-
-    if specified_out:
-        return out_array
-    else:
-        return operands[0]
+    return result

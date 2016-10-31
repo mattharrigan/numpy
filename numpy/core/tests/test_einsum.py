@@ -893,6 +893,28 @@ class TestEinSumPath(TestCase):
         opt = np.einsum(*path_test, optimize=exp_path)
         assert_almost_equal(noopt, opt)
 
+    def test_add_subtract(self):
+        # add and subtract scalars
+        assert_equal(3, np.einsum('...+...', 1, 2))
+        assert_equal(-1, np.einsum('...-...', 1, 2))
+
+        # add and subtract 2 by 2 arrays
+        assert_equal(np.ones((2, 2))*3, np.einsum('...+...', np.ones((2, 2)), np.ones((2, 2))*2))
+        assert_equal(-np.ones((2, 2)), np.einsum('...-...', np.ones((2, 2)), np.ones((2, 2))*2))
+
+        # add and subtract 2 by 2 arrays with out given
+        out = np.empty((2, 2))
+        result = np.einsum('...+...', np.ones((2, 2)), np.ones((2, 2))*2, out=out)
+        assert_equal(np.ones((2, 2))*3, out)
+        assert(out is result)
+        result = np.einsum('...-...', np.ones((2, 2)), np.ones((2, 2))*2, out=out)
+        assert_equal(-np.ones((2, 2)), out)
+        assert(out is result)
+
+        # add and subtract a scalar and a 2 by 2 array, changes shape during add/subtract
+        assert_equal(np.ones((2, 2))*3, np.einsum('...+...', 1, np.ones((2, 2))*2))
+        assert_equal(-np.ones((2, 2)), np.einsum('...-...', 1, np.ones((2, 2))*2))
+
 
 if __name__ == "__main__":
     run_module_suite()
