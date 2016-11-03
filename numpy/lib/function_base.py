@@ -1701,7 +1701,7 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
 
     The first difference is given by ``out[n] = a[n+1] - a[n]`` along
     the given axis, higher differences are calculated by using `diff`
-    recursively.
+    recursively.  Optionally pad the beginning or end of the result.
 
     Parameters
     ----------
@@ -1712,9 +1712,16 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
     axis : int, optional
         The axis along which the difference is taken, default is the last axis.
     to_begin : 1d array_like
-        Values to insert along axis before the differenced results
+        Values to insert along axis before the differenced results.  'first' is
+        an alias for a.take([0], axis), which inserts the first value from a 
+        along the specified axis, which is the inverse of cumsum.  Scalar values 
+        are broadcast across all other axes.  Otherwise the dimension and shape 
+        must match a except along axis
     to_end : 1d array_like
-        Values to insert along axis after the differenced results
+        Values to insert along axis after the differenced results.  Scalar values 
+        are broadcast across all other axes.  Otherwise the dimension and shape
+        must
+        match a except along axis
 
     Returns
     -------
@@ -1741,12 +1748,15 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
            [5, 1, 2]])
     >>> np.diff(x, axis=0)
     array([[-1,  2,  0, -2]])
-    >>> np.diff(x, to_begin=[0, 0], to_end=9)
-    array([[0, 0, 2, 3, 4, 9],
-           [0, 0, 5, 1, 2, 9]])
+    >>> np.diff(x, to_begin=0, to_end=9)
+    array([[0, 2, 3, 4, 9],
+           [0, 5, 1, 2, 9]])
     >>> np.cumsum(np.diff(x, to_begin='first', axis=1), axis=1)
     array([[1, 3, 6, 10],
            [0, 5, 6, 8]])
+    >>> np.diff(x, to_begin=x.take[0,1], axis=1), axis=1)
+    array([[1, 3, 2, 3, 4],
+           [0, 5, 5, 1, 2]])
     """
     if n == 0:
         return a
@@ -1770,22 +1780,21 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
         return a[slice1]-a[slice2]
 
     else:
-        # make to_end a 1D array
+        # logic to handle to_end input
+        # l_end is the length of padding at the end
         if to_end is None:
             l_end = 0
         else:
             to_end = np.asanyarray(to_end)
-            if to_end.ndim < 2:
-                l_end = to_end.size
-                shape = [1] * a.ndim
-                shape[axis] = -1
-                to_end = to_end.reshape(tuple(shape))
+            if to_end.ndim == 0:
+                l_end = 1
+            elif to_end.ndim != a.ndim:
+                raise ValueError('to_end must have the same dimension as ary')
             else:
-                # consider using atleast_nd
-                to_end = np.array(to_end, ndmin=nd)
                 l_end = to_end.shape[axis]
 
-        # make to_begin a 1D array
+        # logic to handle to_begin input
+        # l_begin is the length of padding at the beginning
         if to_begin is None:
             l_begin = 0
         elif isinstance(to_begin, str) and to_begin == 'first':
@@ -1793,14 +1802,11 @@ def diff(a, n=1, axis=-1, to_begin=None, to_end=None):
             l_begin = 1
         else:
             to_begin = np.asanyarray(to_begin)
-            if to_begin.ndim < 2:
-                l_begin = to_begin.size
-                shape = [1] * a.ndim
-                shape[axis] = -1
-                to_begin = to_begin.reshape(tuple(shape))
+            if to_begin.ndim == 0:
+                l_begin = 1
+            elif to_begin.ndim != a.ndim:
+                raise ValueError('to_begin must have the same dimension as ary')
             else:
-                # consider using atleast_nd
-                to_begin = np.array(to_begin, ndmin=nd)
                 l_begin = to_begin.shape[axis]
 
         # compute the length of the diff'd portion

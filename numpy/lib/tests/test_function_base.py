@@ -642,19 +642,15 @@ class TestDiff(TestCase):
         assert_array_equal(diff(x, axis=0), out3)
         assert_array_equal(diff(x, n=2, axis=0), out4)
 
-    def test_begin_end_1d(self):
+    def test_begin_end_scalar(self):
         x = [1, 3]
         assert_array_equal(diff(x, to_begin=-2), [-2, 2])
-        assert_array_equal(diff(x, to_begin=[]), [2])
-        assert_array_equal(diff(x, to_begin=[-2, 4]), [-2, 4, 2])
+        assert_array_equal(diff(x), [2])
 
         assert_array_equal(diff(x, to_end=-3), [2, -3])
-        assert_array_equal(diff(x, to_end=[]), [2])
-        assert_array_equal(diff(x, to_end=[-3, 7]), [2, -3, 7])
+        assert_array_equal(diff(x), [2])
 
         assert_array_equal(diff(x, to_begin=-2, to_end=-3), [-2, 2, -3])
-        assert_array_equal(diff(x, to_begin=[], to_end=[]), [2])
-        assert_array_equal(diff(x, to_begin=[-2, 4], to_end=[-3, 7]), [-2, 4, 2, -3, 7])
 
         # inverse of cumsum
         assert_array_equal(x, np.cumsum(np.diff(x, to_begin=x[0])))
@@ -699,24 +695,10 @@ class TestDiff(TestCase):
             assert_equal(x.shape[axis] + 1, result.shape[axis])
             assert_array_equal(x.take([0, 1], axis=axis), result.take([0, 1], axis=axis))
 
-            # insert two values to begin as a 1D array
-            result = np.diff(x, to_begin=[0., 1], axis=axis)
-            assert_equal(x.shape[axis] + 1, result.shape[axis])
-            begin = np.array([0., 1]).reshape(tuple(-1 if i==axis else 1 for i in range(3)))
-            begin = np.tile(begin, tuple(1 if i==axis else x.shape[i] for i in range(3)))
-            assert_array_equal(begin, result.take([0, 1], axis=axis))
-
             # insert two values to end
             result = np.diff(x, to_end=x.take([0, 1], axis=axis), axis=axis)
             assert_equal(x.shape[axis] + 1, result.shape[axis])
             assert_array_equal(x.take([0, 1], axis=axis), result.take([-2, -1], axis=axis))
-
-            # insert two values to end as a 1D array
-            result = np.diff(x, to_end=[0., 1], axis=axis)
-            assert_equal(x.shape[axis] + 1, result.shape[axis])
-            end = np.array([0., 1]).reshape(tuple(-1 if i==axis else 1 for i in range(3)))
-            end = np.tile(end, tuple(1 if i==axis else x.shape[i] for i in range(3)))
-            assert_array_equal(end, result.take([-2, -1], axis=axis))
 
             # higher difference with padding on both sides
             result = np.diff(x, n=2, to_begin=x.take([0, 1], axis=axis), 
