@@ -649,6 +649,105 @@ class TestDiff(TestCase):
         assert_array_equal(diff(x, axis=0), out3)
         assert_array_equal(diff(x, n=2, axis=0), out4)
 
+    def test_prepend_append_scalar(self):
+        x = [1, 3]
+        assert_array_equal(diff(x, prepend=-2), [-2, 2])
+        assert_array_equal(diff(x), [2])
+
+        assert_array_equal(diff(x, append=-3), [2, -3])
+        assert_array_equal(diff(x), [2])
+
+        assert_array_equal(diff(x, prepend=-2, append=-3), [-2, 2, -3])
+
+        assert_array_equal(diff(x, append='last'), [2, 3])
+
+        # inverse of cumsum
+        assert_array_equal(x, np.cumsum(np.diff(x, prepend=x[0])))
+        assert_array_equal(x, np.cumsum(np.diff(x, prepend='first')))
+
+    def test_prepend_append_nd(self):
+        x = rand(4, 5, 6)
+        out1 = x[:, :, 1:] - x[:, :, :-1]
+        out2 = out1[:, :, 1:] - out1[:, :, :-1]
+        out3 = x[1:, :, :] - x[:-1, :, :]
+        out4 = out3[1:, :, :] - out3[:-1, :, :]
+
+        expected = np.concatenate((np.tile([1], (4, 5, 1)), out1), 2)
+        assert_array_equal(diff(x, prepend=1), expected)
+        expected = np.concatenate((out1, np.tile([1], (4, 5, 1))), 2)
+        assert_array_equal(diff(x, append=1), expected)
+        expected = np.concatenate((np.tile([1], (4, 5, 1)), out1, np.tile([1], (4, 5, 1))), 2)
+        assert_array_equal(diff(x, append=1, prepend=1), expected)
+
+        expected = np.concatenate((np.tile([1], (4, 5, 1)), out2), 2)
+        assert_array_equal(diff(x, n=2), out2)
+
+        expected = np.concatenate((np.tile([1], (1, 5, 6)), out3), 0)
+        assert_array_equal(diff(x, axis=0, prepend=1), expected)
+        expected = np.concatenate((out3, np.tile([1], (1, 5, 6))), 0)
+        assert_array_equal(diff(x, axis=0, append=1), expected)
+        expected = np.concatenate((np.tile([1], (1, 5, 6)), out3, np.tile([1], (1, 5, 6))), 0)
+        assert_array_equal(diff(x, axis=0, append=1, prepend=1), expected)
+
+        expected = np.concatenate((np.tile([1], (1, 5, 6)), out4), 0)
+        assert_array_equal(diff(x, n=2, axis=0, prepend=1), expected)
+
+        for axis in range(3):
+            # check inverse of cumsum, inserts a single value
+            result = np.cumsum(np.diff(x, prepend=x.take([0], axis=axis), axis=axis), axis=axis)
+            assert_array_almost_equal(x, result)
+            result = np.cumsum(np.diff(x, prepend='first', axis=axis), axis=axis)
+            assert_array_almost_equal(x, result)
+
+            # insert two values to begin
+            result = np.diff(x, prepend=x.take([0, 1], axis=axis), axis=axis)
+            assert_equal(x.shape[axis] + 1, result.shape[axis])
+            assert_array_equal(x.take([0, 1], axis=axis), result.take([0, 1], axis=axis))
+
+            # insert two values to end
+            result = np.diff(x, append=x.take([0, 1], axis=axis), axis=axis)
+            assert_equal(x.shape[axis] + 1, result.shape[axis])
+            assert_array_equal(x.take([0, 1], axis=axis), result.take([-2, -1], axis=axis))
+
+            # higher difference with padding on both sides
+            result = np.diff(x, n=2, prepend=x.take([0, 1], axis=axis), 
+                             append=x.take([-1], axis=axis), axis=axis)
+            assert_equal(x.shape[axis] + 1, result.shape[axis])
+            assert_array_equal(x.take([0, 1], axis=axis), result.take([0, 1], axis=axis))
+            assert_array_equal(x.take([-1], axis=axis), result.take([-1], axis=axis))
+            assert_array_equal(np.diff(x, n=2, axis=axis), result.take(np.arange(2, x.shape[axis]), axis=axis))
+
+    def test_bad_append_prepend_args(self):
+        x = np.arange(4)
+        y = x.reshape(2, 2)
+
+        assert_raises(ValueError, np.diff, x, prepend='fist')
+        assert_raises(ValueError, np.diff, x, prepend=[[1, 2]])
+        assert_raises(ValueError, np.diff, y, prepend=[1, 2, 3])
+
+        assert_raises(ValueError, np.diff, x, append='list')
+        assert_raises(ValueError, np.diff, x, append=[[1, 2]])
+        assert_raises(ValueError, np.diff, y, append=[1, 2, 3])
+
+    def test_degenerate_size(self):
+        assert_array_equal(np.array([]), diff([]))
+        assert_array_equal(np.array([]), diff([1]))
+        assert_array_equal(np.array([]), diff([1, 2], n=2))
+        assert_array_equal(np.array([]), diff([], n=7))
+
+        x = [[[[1]]]]
+        for axis in range(4):
+            result = diff(x, axis=axis)
+            assert_equal(0, result.shape[axis])
+            assert_equal(3, sum(result.shape))
+
+        assert_array_equal([], np.cumsum(np.diff([], prepend='first')))
+
+    def test_subclasses(self):
+        x = np.matrix(np.eye(3))
+        assert(isinstance(np.diff(x), np.matrix))
+        assert(isinstance(np.diff(x, prepend=0), np.matrix))
+
 
 class TestDelete(TestCase):
 

@@ -159,6 +159,12 @@ being iterated over.
 For consistency with ``ndarray`` and ``broadcast``, ``d.ndim`` is a shorthand
 for ``len(d.shape)``.
 
+``diff`` added padding functionality
+------------------------------------
+Added optional arguments to diff to insert values at the beginning or end.
+Allows for convenient inverse of cumsum with diff(x, prepend='first').
+Alternatively diff(x, prepend=0, append=1) would add 0 and 1 to the 
+beginning and end respectively.
 
 Improvements
 ============

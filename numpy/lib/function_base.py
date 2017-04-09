@@ -1840,13 +1840,13 @@ def gradient(f, *varargs, **kwargs):
         return outvals
 
 
-def diff(a, n=1, axis=-1):
+def diff(a, n=1, axis=-1, prepend=np._NoValue, append=np._NoValue):
     """
     Calculate the n-th discrete difference along given axis.
 
     The first difference is given by ``out[n] = a[n+1] - a[n]`` along
     the given axis, higher differences are calculated by using `diff`
-    recursively.
+    recursively.  Optionally pad the beginning or end of the result.
 
     Parameters
     ----------
@@ -1856,13 +1856,28 @@ def diff(a, n=1, axis=-1):
         The number of times values are differenced.
     axis : int, optional
         The axis along which the difference is taken, default is the last axis.
+    prepend : array_like
+        Values to insert along axis before the differenced results.  'first' is
+        an alias for a.take([0], axis), which inserts the first value from "a" 
+        along the specified axis, which is the inverse of cumsum.  Scalar values 
+        are expanded to arrays with length 1 in the direction of axis and the 
+        shape of the input array in along all other axes.  Otherwise the 
+        dimension and shape must match "a" except along axis.
+    append : array_like
+        Values to insert along axis after the differenced results.  'last' is
+        an alias for a.take([-1], axis), which inserts the last value from "a" 
+        along the specified axis.  Scalar values are expanded to arrays with 
+        length 1 in the direction of axis and the shape of the input array in 
+        along all other axes.  Otherwise the dimension and shape must match 
+        "a" except along axis.
 
     Returns
     -------
     diff : ndarray
         The n-th differences. The shape of the output is the same as `a`
-        except along `axis` where the dimension is smaller by `n`. The
-        type of the output is the same as that of the input.
+        except along `axis` where the dimension is smaller by `n`, and possibly 
+        increased by prepend.shape[axis] + append.shape[axis].  The type of 
+        the output is the same as that of the input.
 
     See Also
     --------
@@ -1888,7 +1903,15 @@ def diff(a, n=1, axis=-1):
            [5, 1, 2]])
     >>> np.diff(x, axis=0)
     array([[-1,  2,  0, -2]])
-
+    >>> np.diff(x, prepend=0, append=9)
+    array([[0, 2, 3, 4, 9],
+           [0, 5, 1, 2, 9]])
+    >>> np.cumsum(np.diff(x, prepend='first', axis=1), axis=1)
+    array([[1, 3, 6, 10],
+           [0, 5, 6, 8]])
+    >>> np.diff(x, prepend=x.take([0, 1], axis=1), axis=1)
+    array([[1, 3, 2, 3, 4],
+           [0, 5, 5, 1, 2]])
     """
     if n == 0:
         return a
@@ -1904,9 +1927,88 @@ def diff(a, n=1, axis=-1):
     slice1 = tuple(slice1)
     slice2 = tuple(slice2)
     if n > 1:
-        return diff(a[slice1]-a[slice2], n-1, axis=axis)
-    else:
+        return diff(a[slice1]-a[slice2], n-1, axis=axis, 
+                    prepend=prepend, append=append)
+
+    # if nothing to add to either side, fast track the result
+    elif prepend is np._NoValue and append is np._NoValue:
         return a[slice1]-a[slice2]
+
+    else:
+        # logic to handle append input
+        # l_end is the length of padding at the end
+        if append is np._NoValue:
+            l_end = 0
+        elif isinstance(append, str) and append == 'last':
+            if a.shape[axis] != 0:
+                append = a.take([-1], axis)
+                l_end = 1
+            else:
+                l_end = 0
+        else:
+            append = np.asanyarray(append)
+            if append.ndim == 0:
+                l_end = 1
+            elif append.ndim != a.ndim:
+                raise ValueError('append must have the same dimension as '
+                                 'the input array')
+            else:
+                l_end = append.shape[axis]
+
+        # logic to handle prepend input
+        # l_begin is the length of padding at the beginning
+        if prepend is np._NoValue:
+            l_begin = 0
+        elif isinstance(prepend, str) and prepend == 'first':
+            # if the input array is empty along axis, then nothing to 
+            # prepend.  Dont error so its still the inverse of cumsum
+            if a.shape[axis] != 0:
+                prepend = a.take([0], axis)
+                l_begin = 1
+            else:
+                l_begin = 0
+        else:
+            prepend = np.asanyarray(prepend)
+            if prepend.ndim == 0:
+                l_begin = 1
+            elif prepend.ndim != a.ndim:
+                raise ValueError('prepend must have the same dimension as '
+                                 'the input array')
+            else:
+                l_begin = prepend.shape[axis]
+
+        # compute the length of the diff'd portion
+        # force length to be non negative
+        l_diff = max(a.shape[axis] - 1, 0)
+
+        # initialize the output array with correct shape
+        shape = list(a.shape)
+        shape[axis] = l_begin + l_end + l_diff
+        result = np.empty(tuple(shape), dtype=a.dtype)
+
+        # wrap ndarray subclasses
+        # TODO: consider subclasses for prepend and append.
+        # Also see ediff1d with similar behavior
+        result = a.__array_wrap__(result)
+        
+        # copy values to end
+        if l_end > 0:
+            end_slice = [slice(None)] * nd
+            end_slice[axis] = slice(l_begin + l_diff, None)
+            result[end_slice] = append
+
+        # copy values to begin
+        if l_begin > 0:
+            begin_slice = [slice(None)] * nd
+            begin_slice[axis] = slice(None, l_begin)
+            result[begin_slice] = prepend
+
+        # perform the diff in place
+        diff_slice = [slice(None)] * nd
+        diff_slice[axis] = slice(l_begin, l_begin + l_diff)
+        np.subtract(a[slice1], a[slice2], out=result[diff_slice])
+
+        return result
 
 
 def interp(x, xp, fp, left=None, right=None, period=None):
